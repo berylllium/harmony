@@ -1,3 +1,6 @@
+mod logging;
+mod theme;
+
 use gpui::*;
 use gpui_component::{button::*, *};
 
@@ -26,10 +29,14 @@ impl Render for Harmony {
 }
 
 fn main() {
+    logging::init();
+
     let app = Application::new();
 
     app.run(move |cx| {
         gpui_component::init(cx);
+
+        theme::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
