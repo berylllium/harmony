@@ -2459,6 +2459,8 @@ dependencies = [
  "anyhow",
  "gpui",
  "gpui-component",
+ "gpui-macros",
+ "rust-embed",
  "tracing",
  "tracing-subscriber",
 ]
