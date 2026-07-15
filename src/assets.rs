@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use anyhow::Context;
 use gpui::{App, AssetSource, Result, SharedString};
+use gpui_component::IconNamed;
 use rust_embed::Embed;
 
 #[derive(Embed)]
@@ -29,7 +30,6 @@ impl AssetSource for Assets {
 }
 
 impl Assets {
-    //ss
     pub fn load_fonts(cx: &App) -> anyhow::Result<()> {
         let font_paths = cx.asset_source().list("fonts")?;
         let mut embedded_fonts = Vec::new();
@@ -44,5 +44,20 @@ impl Assets {
         }
 
         cx.text_system().add_fonts(embedded_fonts)
+    }
+}
+
+pub enum IconName {
+    Frame,
+    House,
+}
+
+impl IconNamed for IconName {
+    fn path(self) -> SharedString {
+        match self {
+            IconName::Frame => "icons/frame.svg",
+            IconName::House => "icons/house.svg",
+        }
+        .into()
     }
 }

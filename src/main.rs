@@ -1,4 +1,5 @@
 mod assets;
+mod dashboard;
 mod logging;
 mod screen;
 mod theme;
@@ -6,25 +7,7 @@ mod theme;
 use gpui::*;
 use gpui_component::*;
 
-use crate::assets::Assets;
-
-pub struct Harmony;
-
-impl Render for Harmony {
-    fn render(
-        &mut self,
-        _: &mut gpui::Window,
-        _: &mut gpui::Context<Self>,
-    ) -> impl gpui::IntoElement {
-        v_flex()
-            .w(relative(1.0))
-            .h(relative(1.0))
-            .items_center()
-            .justify_center()
-            .font_family(SharedString::from("Lilex"))
-            .child(screen::welcome::Welcome)
-    }
-}
+use crate::{assets::Assets, dashboard::Dashboard};
 
 fn main() {
     logging::init();
@@ -40,7 +23,7 @@ fn main() {
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|_| Harmony);
+                let view = Dashboard::view(window, cx);
 
                 cx.new(|cx| Root::new(view, window, cx))
             })?;

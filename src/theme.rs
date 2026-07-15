@@ -12,6 +12,7 @@ pub fn init(cx: &mut App) {
                 .cloned()
             {
                 Theme::global_mut(cx).apply_config(&theme);
+                Theme::global_mut(cx).font_family = "Lilex".into();
             }
         })
     {
