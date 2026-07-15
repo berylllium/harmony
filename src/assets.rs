@@ -6,7 +6,6 @@ use rust_embed::Embed;
 
 #[derive(Embed)]
 #[folder = "assets/"]
-#[include = "fonts/**/**"]
 pub struct Assets;
 
 impl AssetSource for Assets {
@@ -30,11 +29,12 @@ impl AssetSource for Assets {
 }
 
 impl Assets {
-    pub fn load_fonts(&self, cx: &App) -> anyhow::Result<()> {
-        let font_paths = self.list("fonts")?;
+    //ss
+    pub fn load_fonts(cx: &App) -> anyhow::Result<()> {
+        let font_paths = cx.asset_source().list("fonts")?;
         let mut embedded_fonts = Vec::new();
         for font_path in font_paths {
-            if font_path.ends_with(".ttf") {
+            if font_path.ends_with(".otf") {
                 let font_bytes = cx
                     .asset_source()
                     .load(&font_path)?

@@ -4,7 +4,7 @@ mod screen;
 mod theme;
 
 use gpui::*;
-use gpui_component::{button::*, *};
+use gpui_component::*;
 
 use crate::assets::Assets;
 
@@ -21,7 +21,7 @@ impl Render for Harmony {
             .h(relative(1.0))
             .items_center()
             .justify_center()
-            .font_family(SharedString::from("Iosevka"))
+            .font_family(SharedString::from("Lilex"))
             .child(screen::welcome::Welcome)
     }
 }
@@ -36,7 +36,7 @@ fn main() {
 
         theme::init(cx);
 
-        Assets.load_fonts(cx).unwrap();
+        Assets::load_fonts(cx).unwrap();
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

@@ -5,7 +5,7 @@ use gpui_component::v_flex;
 pub struct Welcome;
 
 impl RenderOnce for Welcome {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         v_flex()
             .justify_center()
             .items_center()
