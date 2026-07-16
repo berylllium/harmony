@@ -1,13 +1,14 @@
 mod assets;
+mod config;
 mod dashboard;
+mod environment;
 mod logging;
 mod screen;
-mod theme;
 
 use gpui::*;
 use gpui_component::*;
 
-use crate::{assets::Assets, dashboard::Dashboard};
+use crate::{assets::Assets, config::Config, dashboard::Dashboard};
 
 fn main() {
     logging::init();
@@ -17,9 +18,10 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
-        theme::init(cx);
+        let config = Config::load_config().unwrap();
+        cx.set_global(config);
 
-        Assets::load_fonts(cx).unwrap();
+        Assets::load_resources(cx).unwrap();
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
