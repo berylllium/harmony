@@ -1,16 +1,16 @@
 mod assets;
+mod config;
 mod dashboard;
 mod environment;
 mod logging;
 mod matrix;
 mod screen;
-mod theme;
 mod tokio_bridge;
 
 use gpui::*;
 use gpui_component::*;
 
-use crate::{assets::Assets, dashboard::Dashboard};
+use crate::{assets::Assets, config::Config, dashboard::Dashboard};
 
 fn main() {
     logging::init();
@@ -20,8 +20,10 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
-        theme::init(cx);
-        Assets::load_fonts(cx).unwrap();
+        let config = Config::load_config().unwrap();
+        cx.set_global(config);
+
+        Assets::load_resources(cx).unwrap();
 
         tokio_bridge::init(cx);
 

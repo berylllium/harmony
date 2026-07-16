@@ -2,13 +2,20 @@ pub mod header;
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, h_flex,
+    ActiveTheme,
+    button::Button,
+    h_flex,
     resizable::{h_resizable, resizable_panel},
     sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
 
-use crate::{assets::IconName, dashboard::header::Header, matrix::Matrix, screen::ScreenContainer};
+use crate::{
+    assets::IconName,
+    dashboard::header::Header,
+    matrix::Matrix,
+    screen::{Screen, ScreenContainer},
+};
 
 pub struct Dashboard {
     screen_container: Entity<ScreenContainer>,
@@ -50,7 +57,17 @@ impl Render for Dashboard {
                                 )))
                                 .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().child(
                                     SidebarMenuItem::new("Test room 1").icon(IconName::Frame),
-                                ))),
+                                )))
+                                .footer(
+                                    Button::new("settings-btn")
+                                        .icon(gpui_component::IconName::Settings)
+                                        .tooltip("Settings")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.screen_container.update(cx, |sc, _cx| {
+                                                sc.set_screen(Screen::Settings);
+                                            });
+                                        })),
+                                ),
                         ),
                 )
                 .child(
