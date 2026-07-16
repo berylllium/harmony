@@ -126,6 +126,10 @@ impl Config {
         theme::set_theme_name(theme_name.clone().into(), cx);
         let mut config = Self::load_config().unwrap_or_default();
         config.theme_name = Some(theme_name);
+        // Check if new theme has different dark mode than current.
+        if theme::is_dark_mode(cx) != config.dark_mode.unwrap_or(DARK_MODE) {
+            config.dark_mode = Some(theme::is_dark_mode(cx));
+        }
         let _ = Self::save(&config);
         // Theme overrides font, restore.
         font::set_font_size(font_size, cx);
@@ -153,8 +157,6 @@ pub enum Error {
     Io(String),
     #[error("{0}")]
     Parse(String),
-    #[error("config does not exist")]
-    ConfigMissing,
 }
 
 impl From<std::io::Error> for Error {

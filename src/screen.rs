@@ -46,9 +46,8 @@ impl ScreenContainer {
         cx.new(|cx| Self::new(window, cx))
     }
 
-    pub fn set_screen(&mut self, screen: Screen, cx: &mut Context<Self>) {
+    pub fn set_screen(&mut self, screen: Screen) {
         self.current_screen = screen;
-        cx.notify();
     }
 }
 

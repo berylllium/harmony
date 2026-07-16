@@ -4,6 +4,7 @@ use anyhow::Context;
 use gpui::{App, AssetSource, Result, SharedString};
 use gpui_component::IconNamed;
 use rust_embed::Embed;
+use gpui_component::ThemeRegistry;
 
 #[derive(Embed)]
 #[folder = "assets/"]
@@ -30,7 +31,7 @@ impl AssetSource for Assets {
 }
 
 impl Assets {
-    pub fn load_fonts(cx: &App) -> anyhow::Result<()> {
+    fn load_fonts(cx: &App) -> anyhow::Result<()> {
         let font_paths = cx.asset_source().list("fonts")?;
         let mut embedded_fonts = Vec::new();
         for font_path in font_paths {
@@ -44,6 +45,19 @@ impl Assets {
         }
 
         cx.text_system().add_fonts(embedded_fonts)
+    }
+
+    fn load_themes(cx: &mut App, on_ready: impl Fn(&mut App) + 'static) {
+        if let Err(err) = ThemeRegistry::watch_dir(std::path::PathBuf::from("./themes"), cx, on_ready)
+        {
+            tracing::error!("Failed to watch themes directory: {}", err);
+        }
+    }
+
+    pub fn load_resources(cx: &mut App, on_ready: impl Fn(&mut App) + 'static) -> anyhow::Result<()> {
+        Self::load_fonts(cx)?;
+        Self::load_themes(cx, on_ready);
+        Ok(())
     }
 }
 

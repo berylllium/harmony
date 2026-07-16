@@ -4,7 +4,6 @@ mod dashboard;
 mod environment;
 mod logging;
 mod screen;
-mod theme;
 
 use gpui::*;
 use gpui_component::*;
@@ -19,11 +18,9 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
-        theme::init(cx);
-
-        Config::load_settings_into_state(cx).unwrap_or_default();
-
-        Assets::load_fonts(cx).unwrap();
+        let _ = Assets::load_resources(cx, |cx| {
+            let _ = Config::load_settings_into_state(cx);
+        });
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

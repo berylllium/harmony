@@ -55,8 +55,8 @@ impl Render for Dashboard {
                                         .icon(gpui_component::IconName::Settings)
                                         .tooltip("Settings")
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.screen_container.update(cx, |sc, cx| {
-                                                sc.set_screen(Screen::Settings, cx);
+                                            this.screen_container.update(cx, |sc, _cx| {
+                                                sc.set_screen(Screen::Settings);
                                             });
                                         })),
                                 ),

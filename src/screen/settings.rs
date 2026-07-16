@@ -10,12 +10,11 @@ use crate::config::{Config, DARK_MODE, DEFAULT_FONT_SIZE, DEFAULT_THEME_NAME, FO
 
 pub struct Settings {
     focus_handle: FocusHandle,
-    config: Config,
 }
 
 impl Settings {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>, focus_handle: FocusHandle) -> Self {
-        Settings { focus_handle, config: Config::default() }
+        Settings { focus_handle }
     }
 
     pub fn view(window: &mut Window, cx: &mut App, focus_handle: FocusHandle) -> Entity<Self> {
