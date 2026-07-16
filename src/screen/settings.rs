@@ -35,6 +35,7 @@ impl Render for Settings {
                                 Config::update_global(cx, |config, cx| {
                                     config.theme_name = name.to_string();
                                     config.apply_to_state(cx);
+                                    config.save(cx);
                                 })
                             }),
                         )),
@@ -46,6 +47,7 @@ impl Render for Settings {
                                 Config::update_global(cx, |config, cx| {
                                     config.font_family = font.to_string();
                                     config.apply_to_state(cx);
+                                    config.save(cx);
                                 })
                             }),
                         ))
@@ -58,6 +60,7 @@ impl Render for Settings {
                                     Config::update_global(cx, |config, cx| {
                                         config.font_size = size as f32;
                                         config.apply_to_state(cx);
+                                        config.save(cx);
                                     })
                                 },
                             ),
