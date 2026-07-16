@@ -2,9 +2,12 @@ use std::borrow::Cow;
 
 use anyhow::Context;
 use gpui::{App, AssetSource, Result, SharedString};
+use gpui::{Global, ReadGlobal, UpdateGlobal};
 use gpui_component::IconNamed;
-use rust_embed::Embed;
 use gpui_component::ThemeRegistry;
+use rust_embed::Embed;
+
+use crate::config::Config;
 
 #[derive(Embed)]
 #[folder = "assets/"]
@@ -47,16 +50,37 @@ impl Assets {
         cx.text_system().add_fonts(embedded_fonts)
     }
 
-    fn load_themes(cx: &mut App, on_ready: impl Fn(&mut App) + 'static) {
-        if let Err(err) = ThemeRegistry::watch_dir(std::path::PathBuf::from("./themes"), cx, on_ready)
+    fn load_themes(cx: &mut App) {
+        /// Debounce global to only load themes once after they've been loaded.
+        /// Necessary because gpui-component doesn't expose the
+        /// ThemeRegistry::reload_themes function.
+        struct LoadThemeDebounce(bool);
+
+        impl Global for LoadThemeDebounce {}
+
+        cx.set_global(LoadThemeDebounce(false));
+
+        if let Err(err) =
+            ThemeRegistry::watch_dir(std::path::PathBuf::from("./themes"), cx, |cx: &mut App| {
+                // Only apply the settings on the first call to this closure.
+                if !LoadThemeDebounce::global(cx).0 {
+                    Config::update_global(cx, |config, cx| {
+                        config.apply_to_state(cx);
+                    })
+                }
+
+                // Set the debounce to true so that future calls to this
+                // closure will not apply the config again.
+                LoadThemeDebounce::update_global(cx, |debounce, _| debounce.0 = true);
+            })
         {
             tracing::error!("Failed to watch themes directory: {}", err);
         }
     }
 
-    pub fn load_resources(cx: &mut App, on_ready: impl Fn(&mut App) + 'static) -> anyhow::Result<()> {
+    pub fn load_resources(cx: &mut App) -> anyhow::Result<()> {
         Self::load_fonts(cx)?;
-        Self::load_themes(cx, on_ready);
+        Self::load_themes(cx);
         Ok(())
     }
 }

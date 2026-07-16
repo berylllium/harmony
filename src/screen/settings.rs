@@ -4,9 +4,9 @@ use gpui_component::setting::{
 };
 use gpui_component::v_flex;
 
+use crate::config::Config;
 use crate::config::font::{font_family, font_options, font_size, font_size_options};
-use crate::config::theme::{is_dark_mode, theme_name, theme_options};
-use crate::config::{Config, DARK_MODE, DEFAULT_FONT_SIZE, DEFAULT_THEME_NAME, FONT_FAMILY};
+use crate::config::theme::{theme_name, theme_options};
 
 pub struct Settings {
     focus_handle: FocusHandle,
@@ -24,44 +24,47 @@ impl Settings {
 
 impl Render for Settings {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .justify_center()
-            .items_center()
-            .child(SettingsWidget::new("app-settings").pages(vec![
+        v_flex().size_full().justify_center().items_center().child(
+            SettingsWidget::new("app-settings").pages(vec![
                 SettingPage::new("General").default_open(true).groups(vec![
                     SettingGroup::new()
                         .title("Appearance")
                         .item(SettingItem::new(
-                            "Dark Mode",
-                            SettingField::switch(is_dark_mode, Config::change_dark_mode)
-                                .default_value(DARK_MODE),
-                        ))
-                        .item(SettingItem::new(
                             "Theme",
                             SettingField::dropdown(theme_options(cx), theme_name, |name, cx| {
-                                Config::change_theme(name.to_string(), cx)
-                            })
-                            .default_value(DEFAULT_THEME_NAME),
+                                Config::update_global(cx, |config, cx| {
+                                    config.theme_name = name.to_string();
+                                    config.apply_to_state(cx);
+                                })
+                            }),
                         )),
                     SettingGroup::new()
                         .title("Font")
                         .item(SettingItem::new(
                             "Font",
                             SettingField::dropdown(font_options(cx), font_family, |font, cx| {
-                                Config::change_font_family(font.to_string(), cx)
-                            })
-                            .default_value(FONT_FAMILY),
+                                Config::update_global(cx, |config, cx| {
+                                    config.font_family = font.to_string();
+                                    config.apply_to_state(cx);
+                                })
+                            }),
                         ))
                         .item(SettingItem::new(
                             "Font Size",
-                            SettingField::number_input(font_size_options(), font_size, |size, cx| {
-                                Config::change_font_size(size as f32, cx)
-                            })
-                            .default_value(DEFAULT_FONT_SIZE as f64),
+                            SettingField::number_input(
+                                font_size_options(),
+                                font_size,
+                                |size, cx| {
+                                    Config::update_global(cx, |config, cx| {
+                                        config.font_size = size as f32;
+                                        config.apply_to_state(cx);
+                                    })
+                                },
+                            ),
                         )),
                 ]),
-            ]))
+            ]),
+        )
     }
 }
 

@@ -18,9 +18,10 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
-        let _ = Assets::load_resources(cx, |cx| {
-            let _ = Config::load_settings_into_state(cx);
-        });
+        let config = Config::load_config().unwrap();
+        cx.set_global(config);
+
+        Assets::load_resources(cx).unwrap();
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

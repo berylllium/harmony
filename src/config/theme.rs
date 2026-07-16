@@ -5,15 +5,6 @@ use gpui_component::{ActiveTheme, PixelsExt, Theme, ThemeConfig, ThemeMode, Them
 
 use super::font::{set_font_family, set_font_size};
 
-pub fn is_dark_mode(cx: &App) -> bool {
-    cx.theme().mode.is_dark()
-}
-
-pub fn set_dark_mode(is_dark: bool, cx: &mut App) {
-    let mode = if is_dark { ThemeMode::Dark } else { ThemeMode::Light };
-    Theme::change(mode, None, cx);
-}
-
 pub fn theme_options(cx: &App) -> Vec<(SharedString, SharedString)> {
     ThemeRegistry::global(cx)
         .sorted_themes()
