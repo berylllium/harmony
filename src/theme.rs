@@ -1,6 +1,8 @@
 use gpui::App;
 use gpui_component::{Theme, ThemeRegistry};
 
+use crate::config::Config;
+
 const DEFAULT_THEME_NAME: &str = "Gruvbox Dark";
 
 pub fn init(cx: &mut App) {
@@ -14,6 +16,9 @@ pub fn init(cx: &mut App) {
                 Theme::global_mut(cx).apply_config(&theme);
                 Theme::global_mut(cx).font_family = "Lilex".into();
             }
+
+            // Apply any saved settings on top of the defaults above.
+            let _ = Config::load_settings_into_state(cx);
         })
     {
         tracing::error!("Failed to watch themes directory: {}", err);

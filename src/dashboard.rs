@@ -1,12 +1,17 @@
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, Side, h_flex,
+    ActiveTheme,
+    button::Button,
+    h_flex,
     resizable::{h_resizable, resizable_panel},
-    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
+    sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
 
-use crate::{assets::IconName, screen::ScreenContainer};
+use crate::{
+    assets::IconName,
+    screen::{Screen, ScreenContainer},
+};
 
 pub struct Dashboard {
     screen_container: Entity<ScreenContainer>,
@@ -27,7 +32,7 @@ impl Dashboard {
 }
 
 impl Render for Dashboard {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body =
             h_resizable("dashboard-container")
                 .child(
@@ -44,7 +49,17 @@ impl Render for Dashboard {
                                 )))
                                 .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().child(
                                     SidebarMenuItem::new("Test room 1").icon(IconName::Frame),
-                                ))),
+                                )))
+                                .footer(
+                                    Button::new("settings-btn")
+                                        .icon(gpui_component::IconName::Settings)
+                                        .tooltip("Settings")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.screen_container.update(cx, |sc, cx| {
+                                                sc.set_screen(Screen::Settings, cx);
+                                            });
+                                        })),
+                                ),
                         ),
                 )
                 .child(

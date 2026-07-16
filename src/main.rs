@@ -1,5 +1,7 @@
 mod assets;
+mod config;
 mod dashboard;
+mod environment;
 mod logging;
 mod screen;
 mod theme;
@@ -7,7 +9,7 @@ mod theme;
 use gpui::*;
 use gpui_component::*;
 
-use crate::{assets::Assets, dashboard::Dashboard};
+use crate::{assets::Assets, config::Config, dashboard::Dashboard};
 
 fn main() {
     logging::init();
@@ -18,6 +20,8 @@ fn main() {
         gpui_component::init(cx);
 
         theme::init(cx);
+
+        Config::load_settings_into_state(cx).unwrap_or_default();
 
         Assets::load_fonts(cx).unwrap();
 

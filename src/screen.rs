@@ -1,3 +1,4 @@
+pub mod settings;
 pub mod welcome;
 
 use std::collections::HashMap;
@@ -5,11 +6,12 @@ use std::collections::HashMap;
 use gpui::*;
 use gpui_component::scroll::ScrollableElement;
 
-use crate::screen::welcome::Welcome;
+use crate::screen::{settings::Settings, welcome::Welcome};
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Screen {
     Welcome,
+    Settings,
 }
 
 pub struct ScreenContainer {
@@ -22,10 +24,16 @@ impl ScreenContainer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
 
-        let screens = HashMap::from([(
-            Screen::Welcome,
-            Welcome::view(window, cx, focus_handle.clone()).into(),
-        )]);
+        let screens = HashMap::from([
+            (
+                Screen::Welcome,
+                Welcome::view(window, cx, focus_handle.clone()).into(),
+            ),
+            (
+                Screen::Settings,
+                Settings::view(window, cx, focus_handle.clone()).into(),
+            ),
+        ]);
 
         Self {
             screens,
@@ -36,6 +44,11 @@ impl ScreenContainer {
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
+    }
+
+    pub fn set_screen(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        self.current_screen = screen;
+        cx.notify();
     }
 }
 
