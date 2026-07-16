@@ -1,13 +1,27 @@
 use std::env;
 use std::path::PathBuf;
 
-pub const _VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const CONFIG_FILE_NAME: &str = "config.toml";
-pub const _APPLICATION_ID: &str = "com.berylllium.harmony";
+pub const APPLICATION_ID: &str = "com.berylllium.harmony";
 pub const XDG_DIR_NAME: &str = "harmony";
 
 pub fn config_dir() -> PathBuf {
     portable_config_dir().unwrap_or_else(platform_specific_config_dir)
+}
+
+pub fn data_dir() -> PathBuf {
+    portable_config_dir().unwrap_or_else(|| {
+        dirs_next::data_dir()
+            .expect("expected valid data dir")
+            .join(XDG_DIR_NAME)
+    })
+}
+
+pub fn cache_dir() -> PathBuf {
+    dirs_next::cache_dir()
+        .expect("expected valid data dir")
+        .join(XDG_DIR_NAME)
 }
 
 fn portable_config_dir() -> Option<PathBuf> {

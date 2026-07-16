@@ -3,7 +3,9 @@ mod config;
 mod dashboard;
 mod environment;
 mod logging;
+mod matrix;
 mod screen;
+mod tokio_bridge;
 
 use gpui::*;
 use gpui_component::*;
@@ -22,6 +24,8 @@ fn main() {
         cx.set_global(config);
 
         Assets::load_resources(cx).unwrap();
+
+        tokio_bridge::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

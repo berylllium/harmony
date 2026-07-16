@@ -1,3 +1,5 @@
+pub mod header;
+
 use gpui::*;
 use gpui_component::{
     ActiveTheme,
@@ -10,19 +12,25 @@ use gpui_component::{
 
 use crate::{
     assets::IconName,
+    dashboard::header::Header,
+    matrix::Matrix,
     screen::{Screen, ScreenContainer},
 };
 
 pub struct Dashboard {
     screen_container: Entity<ScreenContainer>,
     sidebar_collapsed: bool,
+    matrix: Entity<Matrix>,
 }
 
 impl Dashboard {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let matrix = Matrix::entity(cx);
+
         Self {
-            screen_container: ScreenContainer::view(window, cx),
+            screen_container: ScreenContainer::view(window, cx, matrix.clone()),
             sidebar_collapsed: false,
+            matrix,
         }
     }
 
@@ -70,16 +78,27 @@ impl Render for Dashboard {
                         .child(
                             h_flex()
                                 .id("header")
+                                .w(relative(1.0))
+                                .h(px(60.0))
                                 .p_4()
                                 .border_b_1()
                                 .border_color(cx.theme().border)
                                 .justify_between()
                                 .items_start()
-                                .child(div().text_xl().child("Test Header")),
+                                .child(Header {
+                                    screen_title: self
+                                        .screen_container
+                                        .read(cx)
+                                        .current_screen
+                                        .label()
+                                        .to_owned(),
+                                    matrix: self.matrix.clone(),
+                                }),
                         )
                         .child(
                             div()
                                 .id("screen")
+                                .size_full()
                                 .flex_1()
                                 .child(self.screen_container.clone()),
                         )

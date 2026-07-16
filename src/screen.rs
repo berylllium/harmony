@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use gpui::*;
 use gpui_component::scroll::ScrollableElement;
 
-use crate::screen::{settings::Settings, welcome::Welcome};
+use crate::{
+    matrix::Matrix,
+    screen::{settings::Settings, welcome::Welcome},
+};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Screen {
@@ -15,19 +18,20 @@ pub enum Screen {
 }
 
 pub struct ScreenContainer {
-    screens: HashMap<Screen, AnyView>,
-    current_screen: Screen,
-    focus_handle: FocusHandle,
+    pub screens: HashMap<Screen, AnyView>,
+    pub current_screen: Screen,
+    pub focus_handle: FocusHandle,
+    matrix: Entity<Matrix>,
 }
 
 impl ScreenContainer {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, matrix: Entity<Matrix>) -> Self {
         let focus_handle = cx.focus_handle();
 
         let screens = HashMap::from([
             (
                 Screen::Welcome,
-                Welcome::view(window, cx, focus_handle.clone()).into(),
+                Welcome::view(window, cx, focus_handle.clone(), matrix.clone()).into(),
             ),
             (
                 Screen::Settings,
@@ -39,11 +43,12 @@ impl ScreenContainer {
             screens,
             current_screen: Screen::Welcome,
             focus_handle,
+            matrix,
         }
     }
 
-    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx))
+    pub fn view(window: &mut Window, cx: &mut App, matrix: Entity<Matrix>) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx, matrix))
     }
 
     pub fn set_screen(&mut self, screen: Screen) {
@@ -62,12 +67,11 @@ impl Render for ScreenContainer {
     }
 }
 
-// pub trait Screen: Render + Sized {
-//     fn title() -> &'static str;
-
-//     fn description() -> &'static str {
-//         ""
-//     }
-
-//     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render>;
-// }
+impl Screen {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Screen::Welcome => "Welcome",
+            Screen::Settings => "Settings",
+        }
+    }
+}
