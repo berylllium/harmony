@@ -1,8 +1,11 @@
 mod assets;
 mod dashboard;
+mod environment;
 mod logging;
+mod matrix;
 mod screen;
 mod theme;
+mod tokio_bridge;
 
 use gpui::*;
 use gpui_component::*;
@@ -18,8 +21,9 @@ fn main() {
         gpui_component::init(cx);
 
         theme::init(cx);
-
         Assets::load_fonts(cx).unwrap();
+
+        tokio_bridge::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
