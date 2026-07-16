@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::environment;
-use gpui::{App, Global};
+use gpui::{App, AppContext, Global};
 use serde::{Deserialize, Serialize};
 
 pub mod font;
@@ -31,14 +31,17 @@ impl Config {
         Self::config_dir().join(environment::CONFIG_FILE_NAME)
     }
 
-    pub fn save(&self) -> Result<(), Error> {
-        let config_bytes = toml::to_string_pretty(self)
-            .expect("expected valid config serialization")
-            .into_bytes();
+    pub fn save(&self, cx: &App) {
+        let config = self.clone();
 
-        std::fs::write(Self::path(), config_bytes)?;
+        cx.background_spawn(async move {
+            let config_bytes = toml::to_string_pretty(&config)
+                .expect("expected valid config serialization")
+                .into_bytes();
 
-        Ok(())
+            std::fs::write(Self::path(), config_bytes).unwrap();
+        })
+        .detach();
     }
 
     pub fn load_config() -> Result<Self, Error> {
