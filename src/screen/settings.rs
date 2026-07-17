@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::setting::{
     SettingField, SettingGroup, SettingItem, SettingPage, Settings as SettingsWidget,
 };
@@ -68,6 +69,17 @@ impl Render for Settings {
                             )
                             .default_value(Config::default().font_size),
                         )),
+                ]),
+                SettingPage::new("Account").groups(vec![
+                    SettingGroup::new().title("Session").item(SettingItem::render(
+                        |_options, _window, _cx| {
+                            Button::new("logout-btn").label("Log Out").danger().on_click(
+                                |_, _window, _cx| {
+                                    // TODO: implement logout
+                                },
+                            )
+                        },
+                    )),
                 ]),
             ]),
         )
