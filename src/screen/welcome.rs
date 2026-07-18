@@ -9,7 +9,7 @@ use gpui_component::{
 };
 use rand::make_rng;
 
-use crate::matrix::{Matrix, session::SessionMetadata};
+use crate::matrix::{AuthInfo, Matrix, session::SessionMetadata};
 
 pub struct Welcome {
     login_prompt: Entity<Login>,
@@ -124,12 +124,20 @@ impl Render for Login {
                         .w_full()
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.matrix.update(cx, |matrix, cx| {
-                                matrix.login_password(
-                                    this.homeserver_input.read(cx).value().into(),
-                                    this.username_input.read(cx).value().into(),
-                                    this.password_input.read(cx).value().into(),
-                                    cx,
-                                )
+                                matrix
+                                    .auth(
+                                        cx,
+                                        AuthInfo::Password {
+                                            homeserver: this
+                                                .homeserver_input
+                                                .read(cx)
+                                                .value()
+                                                .into(),
+                                            username: this.username_input.read(cx).value().into(),
+                                            password: this.password_input.read(cx).value().into(),
+                                        },
+                                    )
+                                    .detach();
                             })
                         })),
                 ),
