@@ -37,7 +37,8 @@ impl Render for Settings {
                                     config.apply_to_state(cx);
                                     config.save(cx);
                                 })
-                            }),
+                            })
+                            .default_value(Config::default().theme_name),
                         )),
                     SettingGroup::new()
                         .title("Font")
@@ -49,7 +50,8 @@ impl Render for Settings {
                                     config.apply_to_state(cx);
                                     config.save(cx);
                                 })
-                            }),
+                            })
+                            .default_value(Config::default().font_family),
                         ))
                         .item(SettingItem::new(
                             "Font Size",
@@ -63,7 +65,8 @@ impl Render for Settings {
                                         config.save(cx);
                                     })
                                 },
-                            ),
+                            )
+                            .default_value(Config::default().font_size),
                         )),
                 ]),
             ]),
