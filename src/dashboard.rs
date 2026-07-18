@@ -58,14 +58,16 @@ impl Render for Dashboard {
             .child(SidebarGroup::new("Spaces").child(SidebarMenu::new().child(
                 SidebarMenuItem::new("Test space 1").icon(IconName::House),
             )))
-            .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().child(
-                SidebarMenuItem::new("Test room 1")
-                    .icon(IconName::Frame)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.screen_container.update(cx, |sc, cx| {
-                            sc.set_screen(Screen::Chat);
-                        });
-                    })),
+            .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().children(
+                self.get_available_rooms(cx).into_iter().map(|room_name| {
+                    SidebarMenuItem::new(room_name)
+                        .icon(IconName::Frame)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.screen_container.update(cx, |sc, cx| {
+                                sc.set_screen(Screen::Chat);
+                            });
+                        }))
+                }),
             )))
             .footer(if self.sidebar_collapsed {
                 h_flex()
@@ -151,36 +153,7 @@ impl Render for Dashboard {
                     resizable_panel()
                         .size(px(255.0))
                         .size_range(px(200.0)..px(320.0))
-                        .child(
-                            Sidebar::left()
-                                .w(relative(1.0))
-                                .border_0()
-                                .collapsed(self.sidebar_collapsed)
-                                .child(SidebarGroup::new("Spaces").child(SidebarMenu::new().child(
-                                    SidebarMenuItem::new("Test space 1").icon(IconName::House),
-                                )))
-                                .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().children(
-                                    self.get_available_rooms(cx).into_iter().map(|room_name| {
-                                        SidebarMenuItem::new(room_name)
-                                            .icon(IconName::Frame)
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.screen_container.update(cx, |sc, cx| {
-                                                    sc.set_screen(Screen::Chat);
-                                                });
-                                            }))
-                                    }),
-                                )))
-                                .footer(
-                                    Button::new("settings-btn")
-                                        .icon(gpui_component::IconName::Settings)
-                                        .tooltip("Settings")
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.screen_container.update(cx, |sc, cx| {
-                                                sc.set_screen(Screen::Settings);
-                                            });
-                                        })),
-                                ),
-                        ),
+                        .child(sidebar),
                 )
                 .child(content)
                 .into_any_element()
