@@ -1,17 +1,13 @@
 pub mod session;
 
-use std::{assert_matches, path::PathBuf};
+use std::path::PathBuf;
 
 use gpui::*;
 use matrix_sdk::{
-    AuthSession, Client, ClientBuildError,
+    AuthSession, Client,
     authentication::matrix::MatrixSession,
     config::SyncSettings,
-    ruma::{
-        OwnedUserId,
-        api::client::{self, sync::sync_events::v5::response::Room},
-        events::room::message::SyncRoomMessageEvent,
-    },
+    ruma::{OwnedUserId, events::room::message::SyncRoomMessageEvent},
 };
 use rand::distr::{Alphanumeric, SampleString};
 
@@ -66,6 +62,10 @@ impl Matrix {
 
     /// Attempt authenticating with the homeserver in a background thread.
     pub fn auth(&mut self, cx: &mut Context<Self>, auth_info: AuthInfo) -> Task<()> {
+        if matches!(auth_info, AuthInfo::Password { .. }) {
+            self.connection = ConnectionState::Connecting;
+        };
+
         cx.spawn(async move |s, cx| {
             let client_auth_info = auth_info.clone();
             let client = tokio_bridge::spawn_async(cx, async move {
@@ -115,7 +115,7 @@ impl Matrix {
         };
 
         let Ok(Some(secrets)) = SessionSecrets::load(&metadata.user_id) else {
-            return Err(AuthError::NoSession);
+            return Err(AuthError::NoKeyring);
         };
 
         let client = Client::builder()
@@ -191,6 +191,31 @@ impl Matrix {
             .await
             .map_err(|e| AuthError::APIError(e.to_string()))?;
 
+        let session = client
+            .session()
+            .and_then(|s| match s {
+                AuthSession::Matrix(m) => Some(m),
+                _ => None,
+            })
+            .expect("client currently only accepts matrix_auth");
+
+        let metadata = SessionMetadata {
+            homeserver: homeserver,
+            db_path,
+            user_id: session.meta.user_id.to_string(),
+        };
+
+        metadata.store().await.unwrap();
+
+        let secrets = SessionSecrets {
+            access_token: session.tokens.access_token,
+            refersh_token: session.tokens.refresh_token,
+            device_id: session.meta.device_id.to_string(),
+            db_passphrase,
+        };
+
+        secrets.store(&metadata.user_id).unwrap();
+
         Ok(client)
     }
 }
@@ -235,16 +260,4 @@ pub enum AuthError {
     APIError(String),
     #[error("Invalid user id: {0}")]
     InvalidUserId(String),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Error during a matrix function call.")]
-    MatrixError(#[from] matrix_sdk::Error),
-    #[error("Error occured during handling of a previous matrix session.")]
-    SessionError(#[from] session::Error),
-    #[error("Error connecting client.")]
-    ClientError(#[from] matrix_sdk::ClientBuildError),
-    #[error("Error during matrix login.")]
-    LoginError(String),
 }
