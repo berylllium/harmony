@@ -21,3 +21,6 @@ rust-embed = "8.11.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 thiserror = "2.0.18"
+matrix-sdk-ui = "0.18.0"
+futures-util = "0.3"
+eyeball-im = "0.8"
