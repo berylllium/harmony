@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::setting::{
     SettingField, SettingGroup, SettingItem, SettingPage, Settings as SettingsWidget,
 };
@@ -37,7 +38,8 @@ impl Render for Settings {
                                     config.apply_to_state(cx);
                                     config.save(cx);
                                 })
-                            }),
+                            })
+                            .default_value(Config::default().theme_name),
                         )),
                     SettingGroup::new()
                         .title("Font")
@@ -49,7 +51,8 @@ impl Render for Settings {
                                     config.apply_to_state(cx);
                                     config.save(cx);
                                 })
-                            }),
+                            })
+                            .default_value(Config::default().font_family),
                         ))
                         .item(SettingItem::new(
                             "Font Size",
@@ -63,8 +66,20 @@ impl Render for Settings {
                                         config.save(cx);
                                     })
                                 },
-                            ),
+                            )
+                            .default_value(Config::default().font_size),
                         )),
+                ]),
+                SettingPage::new("Account").groups(vec![
+                    SettingGroup::new().title("Session").item(SettingItem::render(
+                        |_options, _window, _cx| {
+                            Button::new("logout-btn").label("Log Out").danger().on_click(
+                                |_, _window, _cx| {
+                                    // TODO: implement logout
+                                },
+                            )
+                        },
+                    )),
                 ]),
             ]),
         )

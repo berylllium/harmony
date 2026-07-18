@@ -1,20 +1,21 @@
+pub mod chat;
 pub mod settings;
 pub mod welcome;
 
 use std::collections::HashMap;
 
 use gpui::*;
-use gpui_component::scroll::ScrollableElement;
 
 use crate::{
     matrix::Matrix,
-    screen::{settings::Settings, welcome::Welcome},
+    screen::{chat::Chat, settings::Settings, welcome::Welcome},
 };
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Screen {
     Welcome,
     Settings,
+    Chat,
 }
 
 pub struct ScreenContainer {
@@ -36,6 +37,10 @@ impl ScreenContainer {
             (
                 Screen::Settings,
                 Settings::view(window, cx, focus_handle.clone()).into(),
+            ),
+            (
+                Screen::Chat,
+                Chat::view(window, cx, focus_handle.clone()).into(),
             ),
         ]);
 
@@ -61,7 +66,6 @@ impl Render for ScreenContainer {
         div()
             .id("screen-container")
             .size_full()
-            .overflow_y_scrollbar()
             .track_focus(&self.focus_handle)
             .child(self.screens[&self.current_screen].clone())
     }
@@ -72,6 +76,7 @@ impl Screen {
         match self {
             Screen::Welcome => "Welcome",
             Screen::Settings => "Settings",
+            Screen::Chat => "Chat",
         }
     }
 }
