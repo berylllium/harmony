@@ -2,12 +2,17 @@ pub mod session;
 
 use std::path::PathBuf;
 
+use futures_util::{StreamExt, pin_mut};
 use gpui::*;
 use matrix_sdk::{
     AuthSession, Client,
     authentication::matrix::MatrixSession,
     config::SyncSettings,
     ruma::{OwnedUserId, events::room::message::SyncRoomMessageEvent},
+};
+use matrix_sdk_ui::{
+    room_list_service::{RoomListItem, filters::new_filter_non_left},
+    sync_service::SyncService,
 };
 use rand::distr::{Alphanumeric, SampleString};
 
@@ -43,12 +48,14 @@ pub enum AuthInfo {
 
 pub struct Matrix {
     pub connection: ConnectionState,
+    pub rooms: Vec<RoomListItem>,
 }
 
 impl Matrix {
     pub fn new() -> Self {
         Self {
             connection: ConnectionState::CheckingForSession,
+            rooms: Vec::new(),
         }
     }
 
@@ -78,7 +85,8 @@ impl Matrix {
                 matrix.connection = match client {
                     Ok(client) => {
                         // Start sync on successful connection.
-                        tokio_bridge::spawn(cx, Self::sync(client.clone())).detach();
+                        Self::start_client_sync(client.clone(), cx);
+                        Self::start_room_list_sync(client.clone(), cx);
 
                         ConnectionState::Connected(client)
                     }
@@ -212,14 +220,72 @@ impl Matrix {
 }
 
 impl Matrix {
-    async fn sync(client: Client) {
-        client.add_event_handler(|e: SyncRoomMessageEvent| async move {
-            tracing::info!("{:?}", e.as_original().unwrap());
-        });
+    fn start_client_sync(client: Client, cx: &mut App) {
+        tokio_bridge::spawn(cx, async move {
+            client.add_event_handler(|e: SyncRoomMessageEvent| async move {
+                tracing::info!("{:?}", e.as_original().unwrap());
+            });
 
-        tracing::info!("Starting sync");
+            tracing::info!("Starting sync");
 
-        client.sync(SyncSettings::default()).await.unwrap();
+            client.sync(SyncSettings::default()).await.unwrap();
+        })
+        .detach();
+    }
+
+    fn start_room_list_sync(client: Client, cx: &mut App) {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<RoomListItem>>();
+
+        tokio_bridge::spawn(cx, async move {
+            let sync_service = match SyncService::builder(client).build().await {
+                Ok(sync_service) => sync_service,
+                Err(err) => {
+                    tracing::error!("Failed to build matrix sync service: {:?}", err);
+                    return;
+                }
+            };
+
+            let room_list_service = sync_service.room_list_service();
+            let all_rooms = match room_list_service.all_rooms().await {
+                Ok(all_rooms) => all_rooms,
+                Err(err) => {
+                    tracing::error!("Failed to get all_rooms from room list service: {:?}", err);
+                    return;
+                }
+            };
+
+            let (entries_stream, controller) = all_rooms.entries_with_dynamic_adapters(50);
+            controller.set_filter(Box::new(new_filter_non_left()));
+            pin_mut!(entries_stream);
+
+            sync_service.start().await;
+
+            let mut rooms = eyeball_im::Vector::<RoomListItem>::new();
+            while let Some(diffs) = entries_stream.next().await {
+                for diff in diffs {
+                    diff.apply(&mut rooms);
+                }
+
+                if tx.send(rooms.iter().cloned().collect()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+
+        cx.spawn(async move |cx| {
+            while let Some(rooms) = rx.recv().await {
+                if cx
+                    .update_global(|s: &mut Matrix, _| {
+                        s.rooms = rooms;
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 }
 
