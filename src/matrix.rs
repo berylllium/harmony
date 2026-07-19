@@ -46,27 +46,20 @@ pub struct Matrix {
 }
 
 impl Matrix {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let mut s = Self {
+    pub fn new() -> Self {
+        Self {
             connection: ConnectionState::CheckingForSession,
-        };
-
-        // Immediately attempt a session auth.
-        s.auth(cx, AuthInfo::Session).detach();
-        s
-    }
-
-    pub fn entity(cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(cx))
+        }
     }
 
     /// Attempt authenticating with the homeserver in a background thread.
-    pub fn auth(&mut self, cx: &mut Context<Self>, auth_info: AuthInfo) -> Task<()> {
-        if matches!(auth_info, AuthInfo::Password { .. }) {
-            self.connection = ConnectionState::Connecting;
+    pub fn auth(&mut self, cx: &mut App, auth_info: AuthInfo) -> Task<()> {
+        self.connection = match &auth_info {
+            AuthInfo::Session => ConnectionState::CheckingForSession,
+            AuthInfo::Password { .. } => ConnectionState::Connecting,
         };
 
-        cx.spawn(async move |s, cx| {
+        cx.spawn(async move |cx| {
             let client_auth_info = auth_info.clone();
             let client = tokio_bridge::spawn_async(cx, async move {
                 match client_auth_info {
@@ -81,8 +74,8 @@ impl Matrix {
             .await
             .unwrap();
 
-            s.update(cx, |s, cx| {
-                s.connection = match client {
+            cx.update_global(|matrix: &mut Matrix, cx| {
+                matrix.connection = match client {
                     Ok(client) => {
                         // Start sync on successful connection.
                         tokio_bridge::spawn(cx, Self::sync(client.clone())).detach();
@@ -100,8 +93,6 @@ impl Matrix {
                         AuthInfo::Password { .. } => ConnectionState::Error(e),
                     },
                 };
-
-                cx.notify();
             })
             .unwrap();
         })
@@ -245,6 +236,8 @@ fn user_db_dir_path() -> PathBuf {
 fn db_path_for_user(username: &str) -> PathBuf {
     user_db_dir_path().join(username)
 }
+
+impl Global for Matrix {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {

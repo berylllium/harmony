@@ -6,10 +6,7 @@ use std::collections::HashMap;
 
 use gpui::*;
 
-use crate::{
-    matrix::Matrix,
-    screen::{chat::Chat, settings::Settings, welcome::Welcome},
-};
+use crate::screen::{chat::Chat, settings::Settings, welcome::Welcome};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Screen {
@@ -22,17 +19,16 @@ pub struct ScreenContainer {
     pub screens: HashMap<Screen, AnyView>,
     pub current_screen: Screen,
     pub focus_handle: FocusHandle,
-    matrix: Entity<Matrix>,
 }
 
 impl ScreenContainer {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, matrix: Entity<Matrix>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
 
         let screens = HashMap::from([
             (
                 Screen::Welcome,
-                Welcome::view(window, cx, focus_handle.clone(), matrix.clone()).into(),
+                Welcome::view(window, cx, focus_handle.clone()).into(),
             ),
             (
                 Screen::Settings,
@@ -48,12 +44,11 @@ impl ScreenContainer {
             screens,
             current_screen: Screen::Welcome,
             focus_handle,
-            matrix,
         }
     }
 
-    pub fn view(window: &mut Window, cx: &mut App, matrix: Entity<Matrix>) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx, matrix))
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
     }
 
     pub fn set_screen(&mut self, screen: Screen) {

@@ -1,58 +1,47 @@
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, StyledExt,
+    ActiveTheme,
     button::{Button, ButtonVariants},
-    form::{field, v_form},
     input::{Input, InputState},
-    menu::PopupMenuItem::Separator,
     v_flex,
 };
-use rand::make_rng;
 
-use crate::matrix::{AuthInfo, Matrix, session::SessionMetadata};
+use crate::{
+    environment,
+    matrix::{AuthInfo, Matrix, session::SessionMetadata},
+};
 
 pub struct Welcome {
     login_prompt: Entity<Login>,
     focus_handle: FocusHandle,
-    matrix: Entity<Matrix>,
 }
 
 impl Welcome {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        focus_handle: FocusHandle,
-        matrix: Entity<Matrix>,
-    ) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, focus_handle: FocusHandle) -> Self {
         Welcome {
-            login_prompt: cx.new(|cx| Login::new(window, cx, matrix.clone())),
+            login_prompt: cx.new(|cx| Login::new(window, cx)),
             focus_handle,
-            matrix,
         }
     }
 
-    pub fn view(
-        window: &mut Window,
-        cx: &mut App,
-        focus_handle: FocusHandle,
-        matrix: Entity<Matrix>,
-    ) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx, focus_handle, matrix))
+    pub fn view(window: &mut Window, cx: &mut App, focus_handle: FocusHandle) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx, focus_handle))
     }
 }
 
 impl Render for Welcome {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_session = SessionMetadata::exists();
-        let matrix = self.matrix.read(cx);
+        let matrix = Matrix::global(cx);
 
         v_flex()
             .size_full()
             .justify_center()
             .items_center()
             .child(format!(
-                "Welcome {}to Harmony!",
-                if has_session { "back " } else { "" }
+                "Welcome {}to Harmony v{}!",
+                if has_session { "back " } else { "" },
+                environment::VERSION
             ))
             .child(match &matrix.connection {
                 crate::matrix::ConnectionState::CheckingForSession => {
@@ -85,11 +74,10 @@ struct Login {
     homeserver_input: Entity<InputState>,
     username_input: Entity<InputState>,
     password_input: Entity<InputState>,
-    matrix: Entity<Matrix>,
 }
 
 impl Login {
-    fn new(window: &mut Window, cx: &mut Context<Self>, matrix: Entity<Matrix>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             homeserver_input: cx.new(|cx| InputState::new(window, cx).placeholder("homeserver")),
             username_input: cx.new(|cx| InputState::new(window, cx).placeholder("username")),
@@ -98,7 +86,6 @@ impl Login {
                     .placeholder("password")
                     .masked(true)
             }),
-            matrix,
         }
     }
 }
@@ -123,18 +110,17 @@ impl Render for Login {
                         .label("Log In")
                         .w_full()
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.matrix.update(cx, |matrix, cx| {
+                            Matrix::update_global(cx, |matrix, cx| {
+                                let homeserver = this.homeserver_input.read(cx).value().into();
+                                let username = this.username_input.read(cx).value().into();
+                                let password = this.password_input.read(cx).value().into();
                                 matrix
                                     .auth(
                                         cx,
                                         AuthInfo::Password {
-                                            homeserver: this
-                                                .homeserver_input
-                                                .read(cx)
-                                                .value()
-                                                .into(),
-                                            username: this.username_input.read(cx).value().into(),
-                                            password: this.password_input.read(cx).value().into(),
+                                            homeserver,
+                                            username,
+                                            password,
                                         },
                                     )
                                     .detach();

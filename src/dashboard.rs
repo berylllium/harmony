@@ -20,17 +20,19 @@ use crate::{
 pub struct Dashboard {
     screen_container: Entity<ScreenContainer>,
     sidebar_collapsed: bool,
-    matrix: Entity<Matrix>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Dashboard {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let matrix = Matrix::entity(cx);
+        let mut subscriptions = Vec::new();
+
+        subscriptions.push(cx.observe_global::<Matrix>(|_, cx| cx.notify()));
 
         Self {
-            screen_container: ScreenContainer::view(window, cx, matrix.clone()),
+            screen_container: ScreenContainer::view(window, cx),
             sidebar_collapsed: false,
-            matrix,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -55,21 +57,25 @@ impl Render for Dashboard {
                                 .child(SidebarGroup::new("Spaces").child(SidebarMenu::new().child(
                                     SidebarMenuItem::new("Test space 1").icon(IconName::House),
                                 )))
-                                .child(SidebarGroup::new("Rooms").child(SidebarMenu::new().child(
-                                    SidebarMenuItem::new("Test room 1")
-                                        .icon(IconName::Frame)
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.screen_container.update(cx, |sc, cx| {
-                                                sc.set_screen(Screen::Chat);
-                                            });
-                                        })),
-                                )))
+                                .child(
+                                    SidebarGroup::new("Rooms").child(
+                                        SidebarMenu::new().child(
+                                            SidebarMenuItem::new("Test room 1")
+                                                .icon(IconName::Frame)
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.screen_container.update(cx, |sc, _| {
+                                                        sc.set_screen(Screen::Chat);
+                                                    });
+                                                })),
+                                        ),
+                                    ),
+                                )
                                 .footer(
                                     Button::new("settings-btn")
                                         .icon(gpui_component::IconName::Settings)
                                         .tooltip("Settings")
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.screen_container.update(cx, |sc, cx| {
+                                            this.screen_container.update(cx, |sc, _| {
                                                 sc.set_screen(Screen::Settings);
                                             });
                                         })),
@@ -98,7 +104,6 @@ impl Render for Dashboard {
                                         .current_screen
                                         .label()
                                         .to_owned(),
-                                    matrix: self.matrix.clone(),
                                 }),
                         )
                         .child(

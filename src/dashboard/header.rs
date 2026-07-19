@@ -6,7 +6,6 @@ use crate::matrix::{ConnectionState, Matrix};
 #[derive(IntoElement)]
 pub struct Header {
     pub screen_title: String,
-    pub matrix: Entity<Matrix>,
 }
 
 impl RenderOnce for Header {
@@ -30,7 +29,7 @@ impl RenderOnce for Header {
                     .text_align(TextAlign::Right)
                     .child(format!(
                         "Matrix State: {}",
-                        match &self.matrix.read(cx).connection {
+                        match Matrix::global(cx).connection {
                             ConnectionState::CheckingForSession => "Checking for session...",
                             ConnectionState::AwaitingLogin => "Logged Out",
                             ConnectionState::Connecting => "Connecting...",
