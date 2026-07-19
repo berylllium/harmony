@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use gpui::{App, AppContext, AsyncApp, Context, Global, Task};
+use gpui::{App, AppContext, AsyncApp, Global, Task};
 
 pub use tokio::task::JoinError;
 
@@ -51,7 +51,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
-pub fn spawn<T, Fut, R>(cx: &mut Context<'_, T>, f: Fut) -> Task<Result<R, JoinError>>
+pub fn spawn<Fut, R>(cx: &App, f: Fut) -> Task<Result<R, JoinError>>
 where
     Fut: Future<Output = R> + Send + 'static,
     R: Send + 'static,

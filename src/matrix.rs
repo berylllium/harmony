@@ -1,10 +1,15 @@
 pub mod session;
 
-use std::{assert_matches, path::PathBuf};
+use std::path::PathBuf;
 
 use futures_util::{StreamExt, pin_mut};
 use gpui::*;
-use matrix_sdk::{AuthSession, Client, authentication::matrix::MatrixSession, ruma::OwnedUserId};
+use matrix_sdk::{
+    AuthSession, Client,
+    authentication::matrix::MatrixSession,
+    config::SyncSettings,
+    ruma::{OwnedUserId, events::room::message::SyncRoomMessageEvent},
+};
 use matrix_sdk_ui::{
     room_list_service::{RoomListItem, filters::new_filter_non_left},
     sync_service::SyncService,
@@ -26,7 +31,19 @@ pub enum ConnectionState {
     AwaitingLogin,
     Connecting,
     Connected(Client),
-    Error(Error),
+    Error(AuthError),
+}
+
+#[derive(Clone)]
+pub enum AuthInfo {
+    /// Authenticate using an existing session.
+    Session,
+    /// Authenticate using username and password.
+    Password {
+        homeserver: String,
+        username: String,
+        password: String,
+    },
 }
 
 pub struct Matrix {
@@ -35,21 +52,188 @@ pub struct Matrix {
 }
 
 impl Matrix {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let mut s = Self {
+    pub fn new() -> Self {
+        Self {
             connection: ConnectionState::CheckingForSession,
             rooms: Vec::new(),
+        }
+    }
+
+    /// Attempt authenticating with the homeserver in a background thread.
+    pub fn auth(&mut self, cx: &mut App, auth_info: AuthInfo) -> Task<()> {
+        self.connection = match &auth_info {
+            AuthInfo::Session => ConnectionState::CheckingForSession,
+            AuthInfo::Password { .. } => ConnectionState::Connecting,
         };
 
-        s.try_restore(cx);
-        s
+        cx.spawn(async move |cx| {
+            let client_auth_info = auth_info.clone();
+            let client = tokio_bridge::spawn_async(cx, async move {
+                match client_auth_info {
+                    AuthInfo::Session => Self::auth_session().await,
+                    AuthInfo::Password {
+                        homeserver,
+                        username,
+                        password,
+                    } => Self::auth_password(homeserver, username, password).await,
+                }
+            })
+            .await
+            .unwrap();
+
+            cx.update_global(|matrix: &mut Matrix, cx| {
+                matrix.connection = match client {
+                    Ok(client) => {
+                        // Start sync on successful connection.
+                        Self::start_client_sync(client.clone(), cx);
+                        Self::start_room_list_sync(client.clone(), cx);
+
+                        ConnectionState::Connected(client)
+                    }
+                    Err(e) => match auth_info {
+                        AuthInfo::Session => {
+                            tracing::warn!(
+                                "Error during session authentication, skipping auth: {}",
+                                e
+                            );
+                            ConnectionState::AwaitingLogin
+                        }
+                        AuthInfo::Password { .. } => ConnectionState::Error(e),
+                    },
+                };
+            })
+            .unwrap();
+        })
+    }
+}
+
+impl Matrix {
+    async fn auth_session() -> Result<Client, AuthError> {
+        let Some(metadata) = SessionMetadata::load().await.unwrap() else {
+            return Err(AuthError::NoSession);
+        };
+
+        let Ok(Some(secrets)) = SessionSecrets::load(&metadata.user_id) else {
+            return Err(AuthError::NoKeyring);
+        };
+
+        let client = Client::builder()
+            .homeserver_url(metadata.homeserver)
+            .sqlite_store(metadata.db_path, Some(&secrets.db_passphrase))
+            .handle_refresh_tokens()
+            .build()
+            .await
+            .map_err(|e| AuthError::ConnectionError(e.to_string()))?;
+
+        client
+            .restore_session(MatrixSession {
+                meta: matrix_sdk::SessionMeta {
+                    user_id: metadata
+                        .user_id
+                        .parse::<OwnedUserId>()
+                        .map_err(|err| AuthError::InvalidUserId(err.to_string()))?,
+                    device_id: secrets.device_id.into(),
+                },
+                tokens: matrix_sdk::SessionTokens {
+                    access_token: secrets.access_token,
+                    refresh_token: secrets.refersh_token,
+                },
+            })
+            .await
+            .map_err(|e| AuthError::InvalidSession(e.to_string()))?;
+
+        Ok(client)
     }
 
-    pub fn entity(cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(cx))
+    async fn auth_password(
+        homeserver: String,
+        username: String,
+        password: String,
+    ) -> Result<Client, AuthError> {
+        let db_path = db_path_for_user(&username);
+        let db_passphrase = if db_path.exists() {
+            // A user database already exists. Try restoring session metadata.
+            let secrets = SessionMetadata::load()
+                .await
+                .ok()
+                .flatten()
+                .map(|m| SessionSecrets::load(&m.user_id))
+                .transpose()
+                .ok()
+                .flatten()
+                .flatten();
+
+            match secrets {
+                Some(secrets) => secrets.db_passphrase,
+                None => {
+                    // Invalid metadata & session state. Clean up.
+                    std::fs::remove_dir_all(&db_path).unwrap();
+                    Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
+                }
+            }
+        } else {
+            Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
+        };
+
+        let client = Client::builder()
+            .homeserver_url(homeserver.clone())
+            .sqlite_store(db_path.clone(), Some(&db_passphrase))
+            .handle_refresh_tokens()
+            .build()
+            .await
+            .map_err(|e| AuthError::ConnectionError(e.to_string()))?;
+
+        client
+            .matrix_auth()
+            .login_username(&username, &password)
+            .send()
+            .await
+            .map_err(|e| AuthError::APIError(e.to_string()))?;
+
+        let session = client
+            .session()
+            .and_then(|s| match s {
+                AuthSession::Matrix(m) => Some(m),
+                _ => None,
+            })
+            .expect("client currently only accepts matrix_auth");
+
+        let metadata = SessionMetadata {
+            homeserver: homeserver,
+            db_path,
+            user_id: session.meta.user_id.to_string(),
+        };
+
+        metadata.store().await.unwrap();
+
+        let secrets = SessionSecrets {
+            access_token: session.tokens.access_token,
+            refersh_token: session.tokens.refresh_token,
+            device_id: session.meta.device_id.to_string(),
+            db_passphrase,
+        };
+
+        secrets.store(&metadata.user_id).unwrap();
+
+        Ok(client)
+    }
+}
+
+impl Matrix {
+    fn start_client_sync(client: Client, cx: &mut App) {
+        tokio_bridge::spawn(cx, async move {
+            client.add_event_handler(|e: SyncRoomMessageEvent| async move {
+                tracing::info!("{:?}", e.as_original().unwrap());
+            });
+
+            tracing::info!("Starting sync");
+
+            client.sync(SyncSettings::default()).await.unwrap();
+        })
+        .detach();
     }
 
-    fn start_room_list_sync(&mut self, client: Client, cx: &mut Context<Self>) {
+    fn start_room_list_sync(client: Client, cx: &mut App) {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<RoomListItem>>();
 
         tokio_bridge::spawn(cx, async move {
@@ -83,177 +267,23 @@ impl Matrix {
                 }
 
                 if tx.send(rooms.iter().cloned().collect()).is_err() {
-                    break; 
-                }
-            }
-        })
-        .detach();
-
-        cx.spawn(async move |s, cx| {
-            while let Some(rooms) = rx.recv().await {
-                if s.update(cx, |s, cx| {
-                    s.rooms = rooms;
-                    cx.notify();
-                })
-                .is_err()
-                {
                     break;
                 }
             }
         })
         .detach();
-    }
 
-    pub fn try_restore(&mut self, cx: &mut Context<Self>) {
-        assert_matches!(self.connection, ConnectionState::CheckingForSession);
-
-        cx.spawn(async move |s, cx| {
-            let result: Result<Option<Client>, Error> = tokio_bridge::spawn_async(cx, async move {
-                let Some(metadata) = SessionMetadata::load().await.unwrap() else {
-                    return Ok(None); // No saved metadata, not an error.
-                };
-
-                let user_id = metadata.user_id.clone();
-                let secrets = SessionSecrets::load(&user_id)?;
-
-                let Some(secrets) = secrets else {
-                    return Ok(None); // Metadata exists, no keychain entry: treat as logged out.
-                };
-
-                let client = Client::builder()
-                    .homeserver_url(metadata.homeserver)
-                    .sqlite_store(metadata.db_path, Some(&secrets.db_passphrase))
-                    .handle_refresh_tokens()
-                    .build()
-                    .await?;
-
-                client
-                    .restore_session(MatrixSession {
-                        meta: matrix_sdk::SessionMeta {
-                            user_id: metadata
-                                .user_id
-                                .parse::<OwnedUserId>()
-                                .map_err(|err| Error::LoginError(err.to_string()))?,
-                            device_id: secrets.device_id.into(),
-                        },
-                        tokens: matrix_sdk::SessionTokens {
-                            access_token: secrets.access_token,
-                            refresh_token: secrets.refersh_token,
-                        },
+        cx.spawn(async move |cx| {
+            while let Some(rooms) = rx.recv().await {
+                if cx
+                    .update_global(|s: &mut Matrix, _| {
+                        s.rooms = rooms;
                     })
-                    .await?;
-
-                Ok(Some(client))
-            })
-            .await
-            .unwrap();
-
-            s.update(cx, |s, cx| {
-                s.connection = match result {
-                    Ok(Some(client)) => {
-                        s.start_room_list_sync(client.clone(), cx);
-                        ConnectionState::Connected(client)
-                    }
-                    Ok(None) => ConnectionState::AwaitingLogin,
-                    Err(e) => ConnectionState::Error(e),
-                };
-
-                cx.notify();
-            })
-        })
-        .detach();
-    }
-
-    pub fn login_password(
-        &mut self,
-        homeserver: String,
-        username: String,
-        password: String,
-        cx: &mut Context<Self>,
-    ) {
-        self.connection = ConnectionState::Connecting;
-        cx.notify();
-
-        cx.spawn(async move |s, cx| {
-            let result: Result<Client, Error> = tokio_bridge::spawn_async(cx, async move {
-                let db_path = db_path_for_user(&username);
-                let db_passphrase = if db_path.exists() {
-                    let secrets = SessionMetadata::load()
-                        .await
-                        .unwrap()
-                        .map(|m| SessionSecrets::load(&m.user_id))
-                        .transpose()
-                        .unwrap()
-                        .flatten();
-
-                    match secrets {
-                        Some(secrets) => secrets.db_passphrase,
-                        None => {
-                            std::fs::remove_dir_all(&db_path).unwrap();
-                            Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
-                        }
-                    }
-                } else {
-                    Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
-                };
-
-                let client = Client::builder()
-                    .homeserver_url(homeserver.clone())
-                    .sqlite_store(db_path.clone(), Some(&db_passphrase))
-                    .handle_refresh_tokens()
-                    .build()
-                    .await?;
-
-                client
-                    .matrix_auth()
-                    .login_username(&username, &password)
-                    .send()
-                    .await?;
-
-                let session = client
-                    .session()
-                    .and_then(|s| match s {
-                        AuthSession::Matrix(m) => Some(m),
-                        _ => None,
-                    })
-                    .expect("client currently only accepts matrix_auth");
-
-                let metadata = SessionMetadata {
-                    homeserver: homeserver,
-                    db_path,
-                    user_id: session.meta.user_id.to_string(),
-                };
-
-                metadata.store().await.unwrap();
-
-                let secrets = SessionSecrets {
-                    access_token: session.tokens.access_token,
-                    refersh_token: session.tokens.refresh_token,
-                    device_id: session.meta.device_id.to_string(),
-                    db_passphrase,
-                };
-
-                secrets.store(&metadata.user_id).unwrap();
-
-                Ok(client)
-            })
-            .await
-            .unwrap();
-
-            s.update(cx, |s, cx| {
-                s.connection = match result {
-                    Ok(client) => {
-                        s.start_room_list_sync(client.clone(), cx);
-                        ConnectionState::Connected(client)
-                    }
-                    Err(e) => {
-                        tracing::error!("Error during matrix connection: {:?}", e);
-                        ConnectionState::Error(e)
-                    }
-                };
-                cx.notify();
-            })
-            .unwrap()
+                    .is_err()
+                {
+                    break;
+                }
+            }
         })
         .detach();
     }
@@ -273,14 +303,20 @@ fn db_path_for_user(username: &str) -> PathBuf {
     user_db_dir_path().join(username)
 }
 
+impl Global for Matrix {}
+
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Error during a matrix function call.")]
-    MatrixError(#[from] matrix_sdk::Error),
-    #[error("Error occured during handling of a previous matrix session.")]
-    SessionError(#[from] session::Error),
-    #[error("Error connecting client.")]
-    ClientError(#[from] matrix_sdk::ClientBuildError),
-    #[error("Error during matrix login.")]
-    LoginError(String),
+pub enum AuthError {
+    #[error("No existing session found.")]
+    NoSession,
+    #[error("Invalid session: {0}")]
+    InvalidSession(String),
+    #[error("No existing keyring entry found for user.")]
+    NoKeyring,
+    #[error("Failed establish a connection to the matrix servers: {0}")]
+    ConnectionError(String),
+    #[error("Failed an API request: {0}")]
+    APIError(String),
+    #[error("Invalid user id: {0}")]
+    InvalidUserId(String),
 }
