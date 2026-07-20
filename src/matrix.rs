@@ -15,6 +15,7 @@ use matrix_sdk_ui::{
     sync_service::SyncService,
 };
 use rand::distr::{Alphanumeric, SampleString};
+use tracing::info;
 
 use crate::{
     environment,
@@ -58,9 +59,14 @@ impl Matrix {
             rooms: Vec::new(),
         }
     }
+}
 
+// Auth.
+impl Matrix {
     /// Attempt authenticating with the homeserver in a background thread.
     pub fn auth(&mut self, cx: &mut App, auth_info: AuthInfo) -> Task<()> {
+        info!("Starting an authentication attempt");
+
         self.connection = match &auth_info {
             AuthInfo::Session => ConnectionState::CheckingForSession,
             AuthInfo::Password { .. } => ConnectionState::Connecting,
@@ -92,10 +98,7 @@ impl Matrix {
                     }
                     Err(e) => match auth_info {
                         AuthInfo::Session => {
-                            tracing::warn!(
-                                "Error during session authentication, skipping auth: {}",
-                                e
-                            );
+                            info!("Error during session authentication, skipping auth: {}", e);
                             ConnectionState::AwaitingLogin
                         }
                         AuthInfo::Password { .. } => ConnectionState::Error(e),
@@ -105,10 +108,10 @@ impl Matrix {
             .unwrap();
         })
     }
-}
 
-impl Matrix {
     async fn auth_session() -> Result<Client, AuthError> {
+        info!("Attempting to restore a previous session");
+
         let Some(metadata) = SessionMetadata::load().await.unwrap() else {
             return Err(AuthError::NoSession);
         };
@@ -150,6 +153,8 @@ impl Matrix {
         username: String,
         password: String,
     ) -> Result<Client, AuthError> {
+        info!("Attempting password authentication: {homeserver}, {username}");
+
         let db_path = db_path_for_user(&username);
         let db_passphrase = if db_path.exists() {
             // A user database already exists. Try restoring session metadata.
@@ -219,14 +224,15 @@ impl Matrix {
     }
 }
 
+// Syncing.
 impl Matrix {
     fn start_client_sync(client: Client, cx: &mut App) {
         tokio_bridge::spawn(cx, async move {
             client.add_event_handler(|e: SyncRoomMessageEvent| async move {
-                tracing::info!("{:?}", e.as_original().unwrap());
+                info!("{:?}", e.as_original().unwrap());
             });
 
-            tracing::info!("Starting sync");
+            info!("Starting sync");
 
             client.sync(SyncSettings::default()).await.unwrap();
         })
