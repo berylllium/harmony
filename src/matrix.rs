@@ -1,14 +1,12 @@
 pub mod session;
 
-use std::path::PathBuf;
-
 use futures_util::{StreamExt, pin_mut};
 use gpui::*;
 use matrix_sdk::{
     AuthSession, Client,
     authentication::matrix::MatrixSession,
     config::SyncSettings,
-    ruma::{OwnedUserId, events::room::message::SyncRoomMessageEvent},
+    ruma::{DeviceId, OwnedUserId, events::room::message::SyncRoomMessageEvent},
 };
 use matrix_sdk_ui::{
     room_list_service::{RoomListItem, filters::new_filter_non_left},
@@ -18,12 +16,10 @@ use rand::distr::{Alphanumeric, SampleString};
 use tracing::info;
 
 use crate::{
-    environment,
     matrix::session::{SessionMetadata, SessionSecrets},
     tokio_bridge,
 };
 
-const USER_DB_DIR_NAME: &'static str = "user_db";
 const USER_DB_PASSWORD_LEN: usize = 20;
 
 #[derive(Debug)]
@@ -109,24 +105,87 @@ impl Matrix {
         })
     }
 
-    async fn auth_session() -> Result<Client, AuthError> {
-        info!("Attempting to restore a previous session");
+    /// Make a new Client connection.
+    async fn new_connection(
+        homeserver: String,
+        user_id: String,
+    ) -> Result<(Client, String), AuthError> {
+        let device_id = DeviceId::new().to_string();
 
-        let Some(metadata) = SessionMetadata::load().await.unwrap() else {
-            return Err(AuthError::NoSession);
-        };
-
-        let Ok(Some(secrets)) = SessionSecrets::load(&metadata.user_id) else {
-            return Err(AuthError::NoKeyring);
-        };
+        let db_path = session::db_dir(&device_id);
+        let db_password = Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN);
 
         let client = Client::builder()
-            .homeserver_url(metadata.homeserver)
-            .sqlite_store(metadata.db_path, Some(&secrets.db_passphrase))
+            .homeserver_url(&homeserver)
+            .sqlite_store(&db_path, Some(&db_password))
             .handle_refresh_tokens()
             .build()
             .await
             .map_err(|e| AuthError::ConnectionError(e.to_string()))?;
+
+        let meta = SessionMetadata {
+            homeserver,
+            user_id,
+            device_id: device_id.clone(),
+        };
+
+        let secrets = SessionSecrets {
+            access_token: None,
+            refersh_token: None,
+            db_password,
+        };
+
+        meta.store().await.unwrap();
+        secrets.store(&meta.device_id).unwrap();
+
+        Ok((client, device_id))
+    }
+
+    /// Restore connection to session.
+    async fn restore_connection(device_id: &str) -> Result<Client, AuthError> {
+        let Ok(Some(metadata)) = SessionMetadata::load(device_id).await else {
+            return Err(AuthError::NoSession);
+        };
+
+        let Ok(Some(secrets)) = SessionSecrets::load(device_id) else {
+            return Err(AuthError::NoSession);
+        };
+
+        let client = Client::builder()
+            .homeserver_url(&metadata.homeserver)
+            .sqlite_store(session::db_dir(device_id), Some(&secrets.db_password))
+            .handle_refresh_tokens()
+            .build()
+            .await
+            .map_err(|e| AuthError::ConnectionError(e.to_string()))?;
+
+        Ok(client)
+    }
+
+    async fn auth_session() -> Result<Client, AuthError> {
+        info!("Attempting to restore a previous session");
+
+        let Some(device_id) = session::load_last_device_id() else {
+            return Err(AuthError::NoSession);
+        };
+
+        let (access_token, refresh_token) = {
+            let Ok(Some(secrets)) = SessionSecrets::load(&device_id) else {
+                return Err(AuthError::NoSession);
+            };
+
+            let Some(access_token) = secrets.access_token.clone() else {
+                return Err(AuthError::NoSession);
+            };
+
+            (access_token, secrets.refersh_token.clone())
+        };
+
+        let Ok(Some(metadata)) = SessionMetadata::load(&device_id).await else {
+            return Err(AuthError::NoSession);
+        };
+
+        let client = Self::restore_connection(&device_id).await?;
 
         client
             .restore_session(MatrixSession {
@@ -135,11 +194,11 @@ impl Matrix {
                         .user_id
                         .parse::<OwnedUserId>()
                         .map_err(|err| AuthError::InvalidUserId(err.to_string()))?,
-                    device_id: secrets.device_id.into(),
+                    device_id: device_id.into(),
                 },
                 tokens: matrix_sdk::SessionTokens {
-                    access_token: secrets.access_token,
-                    refresh_token: secrets.refersh_token,
+                    access_token,
+                    refresh_token,
                 },
             })
             .await
@@ -155,42 +214,20 @@ impl Matrix {
     ) -> Result<Client, AuthError> {
         info!("Attempting password authentication: {homeserver}, {username}");
 
-        let db_path = db_path_for_user(&username);
-        let db_passphrase = if db_path.exists() {
-            // A user database already exists. Try restoring session metadata.
-            let secrets = SessionMetadata::load()
-                .await
-                .ok()
-                .flatten()
-                .map(|m| SessionSecrets::load(&m.user_id))
-                .transpose()
-                .ok()
-                .flatten()
-                .flatten();
-
-            match secrets {
-                Some(secrets) => secrets.db_passphrase,
-                None => {
-                    // Invalid metadata & session state. Clean up.
-                    std::fs::remove_dir_all(&db_path).unwrap();
-                    Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
-                }
-            }
-        } else {
-            Alphanumeric.sample_string(&mut rand::rng(), USER_DB_PASSWORD_LEN)
+        let (client, device_id) = match session::load_last_device_id() {
+            Some(last_device_id) => (
+                Self::restore_connection(&last_device_id).await?,
+                last_device_id,
+            ),
+            None => Self::new_connection(homeserver.clone(), username.clone()).await?,
         };
 
-        let client = Client::builder()
-            .homeserver_url(homeserver.clone())
-            .sqlite_store(db_path.clone(), Some(&db_passphrase))
-            .handle_refresh_tokens()
-            .build()
-            .await
-            .map_err(|e| AuthError::ConnectionError(e.to_string()))?;
+        let mut secrets = SessionSecrets::load(&device_id).unwrap().unwrap();
 
         client
             .matrix_auth()
             .login_username(&username, &password)
+            .device_id(&device_id)
             .send()
             .await
             .map_err(|e| AuthError::APIError(e.to_string()))?;
@@ -203,22 +240,9 @@ impl Matrix {
             })
             .expect("client currently only accepts matrix_auth");
 
-        let metadata = SessionMetadata {
-            homeserver: homeserver,
-            db_path,
-            user_id: session.meta.user_id.to_string(),
-        };
-
-        metadata.store().await.unwrap();
-
-        let secrets = SessionSecrets {
-            access_token: session.tokens.access_token,
-            refersh_token: session.tokens.refresh_token,
-            device_id: session.meta.device_id.to_string(),
-            db_passphrase,
-        };
-
-        secrets.store(&metadata.user_id).unwrap();
+        secrets.access_token = Some(session.tokens.access_token);
+        secrets.refersh_token = session.tokens.refresh_token;
+        secrets.store(&device_id).unwrap();
 
         Ok(client)
     }
@@ -295,20 +319,6 @@ impl Matrix {
     }
 }
 
-fn user_db_dir_path() -> PathBuf {
-    let dir = environment::data_dir().join(USER_DB_DIR_NAME);
-
-    if !dir.exists() {
-        std::fs::create_dir_all(dir.as_path()).expect("expected permissions to create dir");
-    }
-
-    dir
-}
-
-fn db_path_for_user(username: &str) -> PathBuf {
-    user_db_dir_path().join(username)
-}
-
 impl Global for Matrix {}
 
 #[derive(Debug, thiserror::Error)]
@@ -317,8 +327,6 @@ pub enum AuthError {
     NoSession,
     #[error("Invalid session: {0}")]
     InvalidSession(String),
-    #[error("No existing keyring entry found for user.")]
-    NoKeyring,
     #[error("Failed establish a connection to the matrix servers: {0}")]
     ConnectionError(String),
     #[error("Failed an API request: {0}")]

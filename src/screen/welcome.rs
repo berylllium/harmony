@@ -8,7 +8,10 @@ use gpui_component::{
 
 use crate::{
     environment,
-    matrix::{AuthInfo, Matrix, session::SessionMetadata},
+    matrix::{
+        AuthInfo, Matrix,
+        session::{self},
+    },
 };
 
 pub struct Welcome {
@@ -31,7 +34,7 @@ impl Welcome {
 
 impl Render for Welcome {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let has_session = SessionMetadata::exists();
+        let has_session = session::last_device_id_exists();
         let matrix = Matrix::global(cx);
 
         v_flex()
